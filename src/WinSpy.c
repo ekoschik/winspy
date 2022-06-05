@@ -569,19 +569,6 @@ BOOL WinSpy_InitDlg(HWND hwnd)
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_ZONLY);
     }
 
-    // See what the registry settings are, and setup accordingly
-    if (g_opts.fSaveWinPos && g_opts.ptPinPos.x != CW_USEDEFAULT && g_opts.ptPinPos.y != CW_USEDEFAULT)
-    {
-        SetWindowLayout(hwnd, WINSPY_MINIMIZED);
-    }
-    else
-    {
-        RECT rect;
-        GetWindowRect(hwnd, &rect);
-        g_opts.ptPinPos.x = rect.left;
-        g_opts.ptPinPos.y = rect.top;
-    }
-
     // display the general tab
     SetWindowPos(WinSpyTab[0].hwnd, 0, 0, 0, 0, 0, SWP_SHOWONLY);
 
@@ -590,7 +577,6 @@ BOOL WinSpy_InitDlg(HWND hwnd)
     //  commands.
     //
     hSysMenu = GetSystemMenu(hwnd, FALSE);
-
 
     // add items *before* the close item
     InsertMenu(hSysMenu, SC_CLOSE, MF_BYCOMMAND | MF_ENABLED | MF_STRING, IDM_WINSPY_BROADCASTER, L"&Broadcaster");
@@ -622,7 +608,8 @@ BOOL WinSpy_InitDlg(HWND hwnd)
     // Create tooltips after all other windows
     g_hwndToolTip = CreateTooltip(hwnd);
 
-    ForceVisibleDisplay(hwnd);
+    // Move the window to its initial position and show it.
+    SetInitialWindowPos(hwnd);
 
     // Set focus to first item
     return TRUE;
@@ -723,6 +710,12 @@ INT_PTR WINAPI DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return WinSpy_InitDlg(hwnd);
 
     case WM_CLOSE:
+        // Store the last work area and DPI the window had.
+        // This is used when reading the last position from the registry
+        // when picking an initial position (to account for cases where
+        // the monitors have changed).
+        SetLastWorkAreaAndDpi(hwnd);
+
         ExitWinSpy(hwnd, 0);
         return TRUE;
 

@@ -180,8 +180,10 @@ BOOL FunkyList_DrawItem(HWND hwnd, UINT uCtrlId, DRAWITEMSTRUCT *dis);
 void ToggleWindowLayout(HWND hwnd);
 void SetWindowLayout(HWND hwnd, UINT uLayout);
 UINT GetWindowLayout(HWND hwnd);
-void ForceVisibleDisplay(HWND hwnd);
+void SetInitialWindowPos(HWND hwnd);
 void UpdateMainWindowText();
+void GetWorkArea(RECT* prcWinRect, RECT* prcWorkArea);
+void SetLastWorkAreaAndDpi(HWND hwnd);
 
 #define WINSPY_LAYOUT_NO 0
 #define WINSPY_MINIMIZED 1
@@ -317,9 +319,17 @@ typedef struct
     UINT  uTreeInclude;
     BOOL  fShowHiddenInList;
 
-    // These two variables help us to position WinSpy++ intelligently when it resizes.
-    POINT ptPinPos;
+    // todo...
     UINT  uPinnedCorner;
+    POINT ptPinPos;
+
+    // When the window is closed we store the work area and window DPI
+    // at the time. This is used later if using the ptPinPos stored in
+    // the registry to position the initial window (so that it launches
+    // where it was last closed).
+    POINT ptWorkAreaOrigin;
+    UINT  lastWindowDpi;
+
 } Options;
 
 extern Options g_opts;
@@ -385,6 +395,7 @@ void WindowTree_RefreshWindowNode(HWND hwnd);
 int DPIScale(HWND hwnd, int value);
 void MarkProcessAsPerMonitorDpiAware();
 void MarkProcessAsSystemDpiAware();
+UINT GetDpiForWindow(HWND hwnd);
 
 #ifdef __cplusplus
 }
