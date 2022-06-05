@@ -42,17 +42,9 @@ void LoadSettings(void)
     g_opts.ptPinPos.x = GetSettingInt(hkey, L"xpos", CW_USEDEFAULT);
     g_opts.ptPinPos.y = GetSettingInt(hkey, L"ypos", CW_USEDEFAULT);
 
-    // Ignore the saved window position if it no longer lies within the
-    // bounds of a monitor.
-
-    if (g_opts.fSaveWinPos && (g_opts.ptPinPos.x != CW_USEDEFAULT) && (g_opts.ptPinPos.y != CW_USEDEFAULT))
-    {
-        if (!MonitorFromPoint(g_opts.ptPinPos, MONITOR_DEFAULTTONULL))
-        {
-            g_opts.ptPinPos.x = CW_USEDEFAULT;
-            g_opts.ptPinPos.y = CW_USEDEFAULT;
-        }
-    }
+    g_opts.ptWorkAreaOrigin.x = GetSettingInt(hkey, L"WorkAreaLeft", 0);
+    g_opts.ptWorkAreaOrigin.y = GetSettingInt(hkey, L"WorkAreaTop", 0);
+    g_opts.lastWindowDpi = GetSettingInt(hkey, L"LastWindowDpi", 96);
 
     RegCloseKey(hkey);
 }
@@ -80,6 +72,10 @@ void SaveSettings(void)
 
     WriteSettingInt(hkey, L"xpos", g_opts.ptPinPos.x);
     WriteSettingInt(hkey, L"ypos", g_opts.ptPinPos.y);
+
+    WriteSettingInt(hkey, L"WorkAreaLeft", g_opts.ptWorkAreaOrigin.x);
+    WriteSettingInt(hkey, L"WorkAreaTop", g_opts.ptWorkAreaOrigin.y);
+    WriteSettingInt(hkey, L"LastWindowDpi", g_opts.lastWindowDpi);
 
     RegCloseKey(hkey);
 }

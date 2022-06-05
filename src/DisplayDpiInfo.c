@@ -298,33 +298,33 @@ void MarkProcessAsSystemDpiAware()
 
 UINT g_SystemDPI = 0;
 
-int DPIScale(HWND hwnd, int value)
+UINT GetDpiForWindow(HWND hwnd)
 {
+    InitializeDpiApis();
+
     // If the system supports it (Windows 10+) then we use GetDpiForWindow
     // to determine the DPI associated with the window.  Otherwise, we will
     // query the 'system' DPI that the winspy process is running under via
     // GetDeviceCaps+LOGPIXELSX on a screen DC.
 
+    if (s_pfnGetDpiForWindow)
+    {
+        return s_pfnGetDpiForWindow(hwnd);
+    }
+
     if (g_SystemDPI == 0)
     {
-        InitializeDpiApis();
-
         HDC hdc = GetDC(NULL);
         g_SystemDPI = GetDeviceCaps(hdc, LOGPIXELSX);
         DeleteDC(hdc);
     }
 
-    int dpi = 0;
+    return g_SystemDPI;
+}
 
-    if (s_pfnGetDpiForWindow)
-    {
-        dpi = s_pfnGetDpiForWindow(hwnd);
-    }
-    else
-    {
-        dpi = g_SystemDPI;
-    }
+int DPIScale(HWND hwnd, int value)
+{
+    int dpi = GetDpiForWindow(hwnd);
 
     return MulDiv(value, dpi, 96);
 }
-

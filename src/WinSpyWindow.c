@@ -46,60 +46,179 @@ static GMI_PROC pGetMonitorInfo = 0;
 
 static BOOL fFindMultiMon = TRUE;
 
+BOOL _GetMonitorInfo(HMONITOR hmon, MONITORINFO* pmi)
+{
+    static BOOL tried = FALSE;
+    if (!tried)
+    {
+        HMODULE hUser32 = GetModuleHandle(L"USER32.DLL");
+        pGetMonitorInfo = (GMI_PROC)GetProcAddress(hUser32, "GetMonitorInfoW");
+    }
+    if (pGetMonitorInfo)
+    {
+        return pGetMonitorInfo(hmon, pmi);
+    }
+
+    return FALSE;
+}
+
+HMONITOR _MonitorFromRect(PRECT prc, DWORD dwFlags)
+{
+    static BOOL tried = FALSE;
+    if (!tried)
+    {
+        HMODULE hUser32 = GetModuleHandle(L"USER32.DLL");
+        pMonitorFromRect = (MFR_PROC)GetProcAddress(hUser32, "MonitorFromRect");
+    }
+    if (pMonitorFromRect)
+    {
+        return pMonitorFromRect(prc, dwFlags);
+    }
+
+    return NULL;
+}
+
 //  Get the dimensions of the work area that the specified WinRect resides in
 void GetWorkArea(RECT *prcWinRect, RECT *prcWorkArea)
 {
-    HMONITOR    hMonitor;
-    HMODULE     hUser32;
     MONITORINFO mi;
+    mi.cbSize = sizeof(mi);
 
-    hUser32 = GetModuleHandle(L"USER32.DLL");
-
-    // if we havn't already tried,
-    if (fFindMultiMon == TRUE)
+    HMONITOR hMonitor = _MonitorFromRect(prcWinRect, MONITOR_DEFAULTTONEAREST);
+    if (hMonitor && _GetMonitorInfo(hMonitor, &mi))
     {
-        pMonitorFromRect = (MFR_PROC)GetProcAddress(hUser32, "MonitorFromRect");
-        pGetMonitorInfo = (GMI_PROC)GetProcAddress(hUser32, "GetMonitorInfoW");
-
-        fFindMultiMon = FALSE;
+        *prcWorkArea = mi.rcWork;
+        return;
     }
 
-    if (pMonitorFromRect && pGetMonitorInfo)
+    SystemParametersInfo(SPI_GETWORKAREA, 0, prcWorkArea, FALSE);
+}
+
+// Called when the window is closed to store the work area and dpi at
+// the time, used when reading the last position from the registry to
+// position the initial window.
+void SetLastWorkAreaAndDpi(HWND hwnd)
+{
+    RECT rect;
+    RECT rcWorkArea;
+    GetWindowRect(hwnd, &rect);
+    GetWorkArea(&rect, &rcWorkArea);
+
+    g_opts.ptWorkAreaOrigin.x = rcWorkArea.left;
+    g_opts.ptWorkAreaOrigin.y = rcWorkArea.top;
+    g_opts.lastWindowDpi = GetDpiForWindow(hwnd);
+}
+
+// Called by WinSpy_InitDlg to position and show the main window.
+void SetInitialWindowPos(HWND hwnd)
+{
+    RECT rcStart;
+    GetWindowRect(hwnd, &rcStart);
+
+    // If the fSaveWinPos option is set (and the regkeys are also set) we
+    // have a previous position to restore. Because we always start in
+    // the 'minimized' state we only store a point and the position/dpi
+    // of its monitor. If no stored position, use the window's current
+    // position (the position the window received from its dialog layout).
+    if (!g_opts.fSaveWinPos ||
+        (g_opts.ptPinPos.x == CW_USEDEFAULT) ||
+        (g_opts.ptPinPos.y == CW_USEDEFAULT))
     {
-        mi.cbSize = sizeof(mi);
+        g_opts.ptPinPos.x = rcStart.left;
+        g_opts.ptPinPos.y = rcStart.top;
 
-        hMonitor = pMonitorFromRect(prcWinRect, MONITOR_DEFAULTTONEAREST);
+        // Update the work area and dpi to match the ptPinPos set above.
+        SetLastWorkAreaAndDpi(hwnd);
+    }
 
-        pGetMonitorInfo(hMonitor, &mi);
-        CopyRect(prcWorkArea, &mi.rcWork);
+
+    // todo... ptPinPos might not be top-left of window,
+    //         if uPinnedCorner not PINNED_TOPLEFT...
+    //         Should this be checking uPinnedCorner+ptPinPos and
+    //         picking a top-left here??
+    //         see GetPinnedPosition
+
+
+    POINT ptWorkAreaStored = g_opts.ptWorkAreaOrigin;
+    UINT dpiStored = g_opts.lastWindowDpi;
+
+    // Read the StartupInfo (flags provided by caller of CreateProcess).
+    STARTUPINFO si;
+    GetStartupInfo(&si);
+
+    // If provided a 'monitor hint' in the StartupInfo, for example if
+    // launched from the taskbar, use that monitor. Otherwise us the
+    // window's current monitor.
+    RECT rcWork;
+    MONITORINFO mi;
+    mi.cbSize = sizeof(mi);
+    if (_GetMonitorInfo(si.hStdOutput, &mi))
+    {
+        rcWork = mi.rcWork;
     }
     else
     {
-        SystemParametersInfo(SPI_GETWORKAREA, 0, prcWorkArea, FALSE);
+        GetWorkArea(&rcStart, &rcWork);
     }
-}
 
-void ForceVisibleDisplay(HWND hwnd)
-{
-    RECT        rect;
-    HMODULE     hUser32;
+    // Move the window onto the target monitor (pre-emptively).
+    // This avoids a 'jump' if scaling per-monitor and changing DPIs,
+    // and if 'unuaware' of DPI this makes sure we're on the monitor
+    // we're asking about (so we don't get virtualized coordinates
+    // in cases where the system has multiple DPIs).
+    SetWindowPos(hwnd, NULL, rcWork.left, rcWork.top, 0, 0,
+        SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
 
-    GetWindowRect(hwnd, &rect);
+    // Refresh metrics (including szMinimized which is used below).
+    WinSpyDlg_SizeContents(hwnd);
 
-    hUser32 = GetModuleHandle(L"USER32.DLL");
+    // Refresh the work area and get the DPI of the window.
+    // These may have changed if the window moved between monitors with
+    // different DPIs.
+    UINT dpi = GetDpiForWindow(hwnd);
+    GetWindowRect(hwnd, &rcStart);
+    GetWorkArea(&rcStart, &rcWork);
 
-    pMonitorFromRect = (MFR_PROC)GetProcAddress(hUser32, "MonitorFromRect");
+    // Adjust the starting position from the previous monitor to the new
+    // monitor. This retains the offset the position had relative to its
+    // previous monitor. For example if near the top-left of a monitor
+    // when closed we should launch near the top-left of whichever monitor
+    // we launch to.
+    g_opts.ptPinPos.x = rcWork.left + MulDiv(g_opts.ptPinPos.x - ptWorkAreaStored.x, dpi, dpiStored);
+    g_opts.ptPinPos.y = rcWork.top + MulDiv(g_opts.ptPinPos.y - ptWorkAreaStored.y, dpi, dpiStored);
 
-    if (pMonitorFromRect != 0)
+    // Require that the entire window (in 'minimized' size) is within the work area
+    // at the chosen position, moving the position up/left as needed.
+    if (g_opts.ptPinPos.x + szMinimized.cx > rcWork.right)
     {
-        if (NULL == pMonitorFromRect(&rect, MONITOR_DEFAULTTONULL))
-        {
-            // force window onto primary display if it is not visible
-            rect.left %= GetSystemMetrics(SM_CXSCREEN);
-            rect.top %= GetSystemMetrics(SM_CYSCREEN);
+        g_opts.ptPinPos.x -= ((g_opts.ptPinPos.x + szMinimized.cx) - rcWork.right);
+    }
+    if (g_opts.ptPinPos.y + szMinimized.cy > rcWork.bottom)
+    {
+        g_opts.ptPinPos.y -= ((g_opts.ptPinPos.y + szMinimized.cy) - rcWork.bottom);
+    }
 
-            SetWindowPos(hwnd, 0, rect.left, rect.top, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
-        }
+    // Honor requests in the StartupInfo to launch minimized.
+    // Ignore requests to launch maximized (or normal).
+    BOOL startMinimized = ((si.dwFlags & STARTF_USESHOWWINDOW) &&
+                           ((si.wShowWindow == SW_SHOWMINNOACTIVE) ||
+                            (si.wShowWindow == SW_SHOWMINIMIZED) ||
+                            (si.wShowWindow == SW_MINIMIZE)));
+
+    // Move the window to the initial position.
+    // If not starting minimized also show and activate it.
+    SetWindowPos(hwnd,
+                 NULL,
+                 g_opts.ptPinPos.x,
+                 g_opts.ptPinPos.y,
+                 szMinimized.cx,
+                 szMinimized.cy,
+                 startMinimized ? SWP_NOACTIVATE | SWP_NOZORDER : SWP_SHOWWINDOW);
+
+    if (startMinimized)
+    {
+        // Minimize the window using the command from the StartupInfo.
+        ShowWindow(hwnd, si.wShowWindow);
     }
 }
 
