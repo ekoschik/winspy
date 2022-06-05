@@ -203,6 +203,7 @@ UINT_PTR WinSpyDlg_NCHitTest(HWND hwnd, WPARAM wParam, LPARAM lParam);
 
 UINT WinSpyDlg_CommandHandler(HWND hwnd, WPARAM wParam, LPARAM lParam);
 UINT WinSpyDlg_SysMenuHandler(HWND hwnd, WPARAM wParam, LPARAM lParam);
+UINT WinSpyDlg_NCDoubleClick(HWND hwnd, WPARAM wParam);
 UINT WinSpyDlg_TimerHandler(UINT_PTR uTimerId);
 
 void WinSpyDlg_SizeContents(HWND hwnd);

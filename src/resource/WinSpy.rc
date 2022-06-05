@@ -255,7 +255,7 @@ BEGIN
 END
 
 IDD_MAIN DIALOGEX 0, 0, 434, 251
-STYLE DS_SETFONT | DS_FIXEDSYS | DS_CENTER | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+STYLE DS_SETFONT | DS_FIXEDSYS | DS_CENTER | WS_MINIMIZEBOX | WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "WinSpy++"
 CLASS "WinSpy"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
@@ -641,7 +641,7 @@ BEGIN
             VALUE "FileDescription", "WinSpy"
             VALUE "FileVersion", "1.8"
             VALUE "InternalName", "WinSpy"
-            VALUE "LegalCopyright", "Copyright © 2012 Catch22 Productions"
+            VALUE "LegalCopyright", "Copyright ï¿½ 2012 Catch22 Productions"
             VALUE "OriginalFilename", "WinSpy.exe"
             VALUE "ProductName", "WinSpy"
             VALUE "ProductVersion", "1.8"

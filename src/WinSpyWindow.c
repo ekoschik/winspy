@@ -181,14 +181,7 @@ void GetPinnedPosition(HWND hwnd, POINT *pt)
 //
 BOOL IsWindowMinimized(HWND hwnd)
 {
-    WINDOWPLACEMENT wp;
-
-    ZeroMemory(&wp, sizeof(wp));
-    wp.length = sizeof(wp);
-
-    GetWindowPlacement(hwnd, &wp);
-
-    return (wp.showCmd & SW_SHOWMINIMIZED) ? TRUE : FALSE;
+    return IsIconic(hwnd);
 }
 
 //

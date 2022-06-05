@@ -603,14 +603,13 @@ BOOL WinSpy_InitDlg(HWND hwnd)
         L"Always On &Top\tShift+Y");
     InsertMenu(hSysMenu, SC_CLOSE, MF_BYCOMMAND | MF_SEPARATOR, (UINT_PTR)-1, L"");
 
-    // Change the Maximize item to a Toggle Layout item
-    ModifyMenu(hSysMenu, SC_MAXIMIZE, MF_ENABLED | MF_STRING, SC_MAXIMIZE,
-        L"&Toggle Layout\tF3");
-
-    // Change the bitmaps for the Maximize item
+    // Add a menu item to toggle layout.
+    // Unlike double clicking the title bar this uses the 'EXP' version, which goes through
+    // all three modes (like f3).
+    InsertMenu(hSysMenu, 5, MF_BYPOSITION , IDM_WINSPY_TOGGLEEXP, L"&Toggle Layout2\tF3");
     hBmp1 = LoadBitmap(g_hInst, MAKEINTRESOURCE(IDB_CHECK1));
     hBmp2 = LoadBitmap(g_hInst, MAKEINTRESOURCE(IDB_CHECK2));
-    SetMenuItemBitmaps(hSysMenu, SC_MAXIMIZE, MF_BYCOMMAND, hBmp1, hBmp2);
+    SetMenuItemBitmaps(hSysMenu, 5, MF_BYPOSITION, hBmp1, hBmp2);
 
     // Set the dialog's Small Icon
     hIcon = (HICON)LoadImage(g_hInst, MAKEINTRESOURCE(IDI_APP), IMAGE_ICON, 16, 16, 0);
@@ -736,6 +735,9 @@ INT_PTR WINAPI DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     case WM_SYSCOMMAND:
         return WinSpyDlg_SysMenuHandler(hwnd, wParam, lParam);
+
+    case WM_NCLBUTTONDBLCLK:
+        return WinSpyDlg_NCDoubleClick(hwnd, wParam);
 
     case WM_COMMAND:
         return WinSpyDlg_CommandHandler(hwnd, wParam, lParam);

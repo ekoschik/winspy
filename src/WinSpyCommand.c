@@ -227,6 +227,24 @@ UINT WinSpyDlg_CommandHandler(HWND hwnd, WPARAM wParam, LPARAM lParam)
     return FALSE;
 }
 
+UINT WinSpyDlg_NCDoubleClick(HWND hwnd, WPARAM wParam)
+{
+    // Double clicking on the title bar toggles the layout ('min'/'max' mode).
+    if (wParam == HTCAPTION)
+    {
+        ToggleWindowLayout(hwnd);
+    }
+
+    // Respond non-zero (handled).
+    // We do not want default processing, which includes double clicking
+    // top and bottom resize borders to 'vertical maximize' (extends to
+    // top and bottom of work area).
+    return 1;
+}
+
+// todo, win shift up, win left, are still arranging the window.
+// this is happening bc window has WS_THICKFRAME...
+
 UINT WinSpyDlg_SysMenuHandler(HWND hwnd, WPARAM wParam, LPARAM lParam)
 {
     switch (wParam & 0xFFF0)
@@ -266,6 +284,9 @@ UINT WinSpyDlg_SysMenuHandler(HWND hwnd, WPARAM wParam, LPARAM lParam)
         PostMessage(hwnd, WM_COMMAND, wParam, lParam);
         return TRUE;
 
+    case IDM_WINSPY_TOGGLEEXP:
+        WinSpyDlg_CommandHandler(hwnd, wParam, lParam);
+        break;
     }
     return FALSE;
 
