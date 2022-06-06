@@ -94,9 +94,9 @@ void GetWorkArea(RECT *prcWinRect, RECT *prcWorkArea)
     SystemParametersInfo(SPI_GETWORKAREA, 0, prcWorkArea, FALSE);
 }
 
-// Called when the window is closed to store the work area and dpi at
-// the time, used when reading the last position from the registry to
-// position the initial window.
+// Called when the window is closed to store the position and monitor
+// info showing where the window was. This is stored in the registry
+// and used when picking initial window positions.
 void SetLastWorkAreaAndDpi(HWND hwnd)
 {
     RECT rect;
@@ -104,55 +104,96 @@ void SetLastWorkAreaAndDpi(HWND hwnd)
     GetWindowRect(hwnd, &rect);
     GetWorkArea(&rect, &rcWorkArea);
 
+    g_opts.ptLastClose.x = rect.left;
+    g_opts.ptLastClose.x = rect.top;
     g_opts.ptWorkAreaOrigin.x = rcWorkArea.left;
     g_opts.ptWorkAreaOrigin.y = rcWorkArea.top;
     g_opts.lastWindowDpi = GetDpiForWindow(hwnd);
 }
 
 // Called by WinSpy_InitDlg to position and show the main window.
-void SetInitialWindowPos(HWND hwnd)
+void SetInitialWindowPos(HWND hwnd, HWND hwndLaunchAbove)
 {
     // Read the StartupInfo (flags provided by caller of CreateProcess).
     STARTUPINFO si;
     GetStartupInfo(&si);
 
     RECT rcStart;
-    GetWindowRect(hwnd, &rcStart);
+    RECT rcWork;
 
-    // If the fSaveWinPos option is set (and the regkeys are also set) we
-    // have a previous position to restore. Because we always start in
-    // the 'minimized' state we only store a point and the position/dpi
-    // of its monitor. If no stored position, use the window's current
-    // position (the position the window received from its dialog layout).
-    if (!g_opts.fSaveWinPos ||
-        (g_opts.ptPinPos.x == CW_USEDEFAULT) ||
-        (g_opts.ptPinPos.y == CW_USEDEFAULT))
+    // Determine the desired initial position and set ptPinPos.
+    // Unless using a stored position (from the registry) also update
+    // the ptWorkAreaOrigin and lastWindowDpi to match the window the
+    // position was for (so that we can blindly use them when
+    // adjusting the final position to our initial monitor).
+    if (hwndLaunchAbove)
     {
+        // Another instance was opened before this one.
+        // , start over that instance and 'cascade'
+        // (move down/right) to keep both window's title bars visible).
+
+        WINDOWPLACEMENT wp;
+        wp.length = sizeof(wp);
+        GetWindowPlacement(hwndLaunchAbove, &wp); // todo workspace coords...?
+        rcStart = wp.rcNormalPosition;
+
+        UINT caption = GetSystemMetrics(SM_CYCAPTION) +
+                       (2 * GetSystemMetrics(SM_CXSIZEFRAME));
+
+        OffsetRect(&rcStart, caption, caption);
+
+        GetWorkArea(&rcStart, &rcWork);
+
+        // Move back to left/top of same monitor if moving down/right
+        // moves the window off-screen.
+        if (rcStart.right > rcWork.right)
+        {
+            OffsetRect(&rcStart, rcWork.left - rcStart.left, 0);
+        }
+        if (rcStart.bottom > rcWork.bottom)
+        {
+            OffsetRect(&rcStart, 0, rcWork.top - rcStart.top);
+        }
+
+        // Set ptPinPos AND monitor origin and dpi (as if this was
+        // done when the window was closed)
         g_opts.ptPinPos.x = rcStart.left;
         g_opts.ptPinPos.y = rcStart.top;
-
-        // Update the work area and dpi to match the ptPinPos set above.
-        SetLastWorkAreaAndDpi(hwnd);
+        SetLastWorkAreaAndDpi(hwndLaunchAbove);
     }
     else
     {
-        // todo... ptPinPos might not be top-left of window
-        // if uPinnedCorner not PINNED_TOPLEFT...
-        // Should this be checking uPinnedCorner? or calling GetPinnedPosition?
-        rcStart.left = g_opts.ptPinPos.x;
-        rcStart.top = g_opts.ptPinPos.y;
+        // If 'save window pos' setting enabled and the registry keys are set,
+        // use the stored position, work area, and dpi.
+        if (g_opts.fSaveWinPos &&
+            (g_opts.ptLastClose.x != CW_USEDEFAULT) &&
+            (g_opts.ptLastClose.y != CW_USEDEFAULT))
+        {
+            g_opts.ptPinPos.x = g_opts.ptLastClose.x;
+            g_opts.ptPinPos.y = g_opts.ptLastClose.y;
+        }
+        else
+        {
+            // Start with the window's current position, work area, and dpi.
+            GetWindowRect(hwnd, &rcStart);
+            g_opts.ptPinPos.x = rcStart.left;
+            g_opts.ptPinPos.y = rcStart.top;
+            SetLastWorkAreaAndDpi(hwnd);
+        }
     }
 
+    // Set rcStart to our desired full position, used when determining
+    // the monitor rect.
+    rcStart.left = g_opts.ptPinPos.x;
+    rcStart.top = g_opts.ptPinPos.y;
     rcStart.right = rcStart.left + szMinimized.cx;
     rcStart.bottom = rcStart.top + szMinimized.cy;
 
-    POINT ptWorkAreaStored = g_opts.ptWorkAreaOrigin;
-    UINT dpiStored = g_opts.lastWindowDpi;
-
-    // If provided a 'monitor hint' in the StartupInfo, for example if
-    // launched from the taskbar, use that monitor. Otherwise us the
-    // window's current monitor.
-    RECT rcWork;
+    // If provided a 'monitor hint' in the StartupInfo use that monitor
+    // instead of the one our desired position is mostly on.
+    // For example if closed on the primary and launched from the taskbar
+    // on a secondary monitor (we'll get a hint for the monitor the user
+    // clicked on and our position will be adjusted to be on that monitor).
     MONITORINFO mi;
     mi.cbSize = sizeof(mi);
     if (_GetMonitorInfo(si.hStdOutput, &mi))
@@ -164,15 +205,22 @@ void SetInitialWindowPos(HWND hwnd)
         GetWorkArea(&rcStart, &rcWork);
     }
 
-    // Move the window onto the target monitor.
-    // This avoids a 'jump' later when moving to the final position and
-    // ensures we see the proper coordinates for the monitor we are using.
-    // This is only strictly needed when the system has multiple DPIs.
-    SetWindowPos(hwnd, NULL, rcWork.left, rcWork.top, 0, 0,
-        SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
+    if (GetSystemMetrics(SM_CMONITORS) > 1)
+    {
+        // Move the window onto the target monitor.
+        // This avoids a 'jump' later when moving to the final position and
+        // ensures we see the proper coordinates for the monitor we are using.
+        // This is only strictly needed when trying to show a window on a
+        // monitor with a different DPI scale than the monitor the window
+        // happens to be created on.
+        SetWindowPos(hwnd, NULL, rcWork.left, rcWork.top, 0, 0,
+            SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
+    }
 
     // Refresh metrics (including szMinimized which is used below).
     WinSpyDlg_SizeContents(hwnd);
+    rcStart.right = rcStart.left + szMinimized.cx;
+    rcStart.bottom = rcStart.top + szMinimized.cy;
 
     // Refresh the work area and get the DPI of the window.
     // These may have changed if the window moved between monitors with
@@ -186,8 +234,12 @@ void SetInitialWindowPos(HWND hwnd)
     // previous monitor. For example if near the top-left of a monitor
     // when closed we should launch near the top-left of whichever monitor
     // we launch to.
-    g_opts.ptPinPos.x = rcWork.left + MulDiv(g_opts.ptPinPos.x - ptWorkAreaStored.x, dpi, dpiStored);
-    g_opts.ptPinPos.y = rcWork.top + MulDiv(g_opts.ptPinPos.y - ptWorkAreaStored.y, dpi, dpiStored);
+    POINT ptWorkAreaStored = g_opts.ptWorkAreaOrigin;
+    UINT dpiStored = g_opts.lastWindowDpi;
+    g_opts.ptPinPos.x = rcWork.left +
+                        MulDiv(g_opts.ptPinPos.x - ptWorkAreaStored.x, dpi, dpiStored);
+    g_opts.ptPinPos.y = rcWork.top +
+                        MulDiv(g_opts.ptPinPos.y - ptWorkAreaStored.y, dpi, dpiStored);
 
     // Require that the entire window (in 'minimized' size) is within the work area
     // at the chosen position, moving the position up/left as needed.
@@ -212,8 +264,8 @@ void SetInitialWindowPos(HWND hwnd)
         g_opts.ptPinPos.y += (rcWork.top - (g_opts.ptPinPos.y));
     }
 
-    // Honor requests in the StartupInfo to launch minimized.
-    // Ignore requests to launch maximized (or normal).
+    // If provided a 'Show Window' command in the StartupInfo use it ONLY if it
+    // requests we start minimized. Ignore requests to launch maximized (or normal).
     BOOL startMinimized = ((si.dwFlags & STARTF_USESHOWWINDOW) &&
                            ((si.wShowWindow == SW_SHOWMINNOACTIVE) ||
                             (si.wShowWindow == SW_SHOWMINIMIZED) ||

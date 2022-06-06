@@ -34,6 +34,7 @@ WCHAR      g_szPassword[200];
 WCHAR      g_szClassName[MAX_PATH];
 DWORD      g_dwSelectedPID;         // Set only when a process node is selected in the treeview
 BOOL       g_fShowClientRectAsMargins = FALSE;
+HWND       g_hwndLaunchAbove = NULL;
 
 static TBBUTTON tbbPin[] =
 {
@@ -609,7 +610,7 @@ BOOL WinSpy_InitDlg(HWND hwnd)
     g_hwndToolTip = CreateTooltip(hwnd);
 
     // Move the window to its initial position and show it.
-    SetInitialWindowPos(hwnd);
+    SetInitialWindowPos(hwnd, g_hwndLaunchAbove);
 
     // Set focus to first item
     return TRUE;
@@ -865,6 +866,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 
     LoadSettings();
 
+    g_hwndLaunchAbove = FindWindow(L"WinSpy", L"WinSpy++");
     //DialogBox(hInstance, MAKEINTRESOURCE(IDD_MAIN), 0, DialogProc);
 
     hwndMain = CreateDialog(hInstance, MAKEINTRESOURCE(IDD_MAIN), 0, DialogProc);

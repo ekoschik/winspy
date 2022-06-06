@@ -180,7 +180,7 @@ BOOL FunkyList_DrawItem(HWND hwnd, UINT uCtrlId, DRAWITEMSTRUCT *dis);
 void ToggleWindowLayout(HWND hwnd);
 void SetWindowLayout(HWND hwnd, UINT uLayout);
 UINT GetWindowLayout(HWND hwnd);
-void SetInitialWindowPos(HWND hwnd);
+void SetInitialWindowPos(HWND hwnd, HWND hwndLaunchAbove);
 void UpdateMainWindowText();
 void GetWorkArea(RECT* prcWinRect, RECT* prcWorkArea);
 void SetLastWorkAreaAndDpi(HWND hwnd);
@@ -327,6 +327,7 @@ typedef struct
     // at the time. This is used later if using the ptPinPos stored in
     // the registry to position the initial window (so that it launches
     // where it was last closed).
+    POINT ptLastClose;
     POINT ptWorkAreaOrigin;
     UINT  lastWindowDpi;
 
